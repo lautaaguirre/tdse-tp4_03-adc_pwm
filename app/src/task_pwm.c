@@ -80,29 +80,29 @@ void task_pwm_init(void *parameters)
 
 void task_pwm_update(void *parameters)
 {
+    // Mantenemos el período fijo (65535)
+    static uint16_t period = PERIOD;
 
-	static uint16_t period=PERIOD;
-	static int16_t step = STEP;
+    // Obtenemos el puntero al buzón de mensajes (shared_data)
+    shared_data_type *shared_data = (shared_data_type *) parameters;
 
-	shared_data_type *shared_data = (shared_data_type *) parameters;
+    // 1. Preguntamos: ¿El ADC terminó de leer un dato nuevo?
+    if ( shared_data->adc_end_of_conversion ) {
 
-	if ( shared_data->adc_end_of_conversion ) {
-		shared_data->adc_end_of_conversion = false;
-		setPWM(htim3, TIM_CHANNEL_1, period, shared_data->pwm_active);
-		if ( step>0 ) {
-			if ( period-step<=shared_data->pwm_active ) {
-				step = step * -1;
-			}
-		}
-		else {
-			if ( abs(step)>=shared_data->pwm_active ) {
-				step = step * -1;
-			}
-		}
-		shared_data->pwm_active = shared_data->pwm_active + step;
-	}
+        // 2. Bajamos la bandera de inmediato para no volver a entrar acá
+        // hasta que haya OTRA lectura nueva.
+        shared_data->adc_end_of_conversion = false;
+
+        // 3. Traducimos el idioma del ADC (12 bits) al idioma del Timer (16 bits).
+        // Desplazar 4 bits a la izquierda (<< 4) equivale a multiplicar rápido por 16.
+        // Así, un ADC en 4095 se convierte en un PWM de ~65520 (casi el 100% de brillo).
+        shared_data->pwm_active = (shared_data->adc_value << 4);
+
+        // 4. Mandamos la orden al hardware:
+        // "Timer 3, Canal 1, actualizá tu pulso con el nuevo valor calculado"
+        setPWM(htim3, TIM_CHANNEL_1, period, shared_data->pwm_active);
+    }
 }
-
 
 void setPWM(TIM_HandleTypeDef timer, uint32_t channel,
             uint16_t period, uint16_t pulse) {
